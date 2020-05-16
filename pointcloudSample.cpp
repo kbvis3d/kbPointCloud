@@ -540,35 +540,15 @@ void runSingleTest(const char *ref_file, const char *exec_path)
 ////////////////////////////////////////////////////////////////////////////////
 int main(int argc, char **argv)
 {
-    //int pointcount = OpenLasFiles(new char*[1] {"test.las"}, 1, true, true);
-    int pointcount = OpenLasFiles(new char* [1]{ "flower.las" }, 1, true, true);
-    //int pointcount = OpenLasFiles(new char*[1]{ "statue.las" }, 1, true, true);
-    //int pointcount = OpenLasFiles(new char*[1]{ "towerComplete.las" }, 1, true, true);
-    //int pointcount = OpenLasFiles(new char*[1]{ "flight_scan_minegrid.laz" }, 1, true, true);
-
-    UseRGB(HasRGB());
-    UseIntensity(HasRGB());
+    int pointcount = OpenLasFiles(new char* [1]{ "flower.las" }, 1);
+    //int pointcount = OpenLasFiles(new char*[1]{ "statue.las" }, 1);
+    //int pointcount = OpenLasFiles(new char*[1]{ "towerComplete.las" }, 1);
 
     int bufferCount;
     int* bufferSizes;
     unsigned int* bufferCodes;
-    float** ptSets = ReadPoints(&bufferCount, &bufferSizes, &bufferCodes);
+    float** ptSets = ReadPoints(&bufferCount, &bufferSizes, &bufferCodes, PointAttributes::PointAttribute::RGB, 0);
     byte** prgbarrays = GetPointRGBs();
-    byte** pintarrays = GetPointIntensities();
-    int pcs = GetPointCloudSize();
-
-    bool hasRGB = HasRGB();
-    bool hasClassification = HasClassification();
-    bool hasTime = HasTime();
-    bool hasIR = HasInfrared();
-    bool hasWave = HasWave();
-    bool hasIntensity = HasIntensity();
-    if (hasRGB) cerr << "RGB\n";
-    if (hasIntensity) cerr << "Intensity\n";
-    if (hasClassification) cerr << "Classification\n";
-    if (hasTime) cerr << "Time\n";
-    if (hasIR) cerr << "Infrared\n";
-    if (hasWave) cerr << "Wave\n";
 
     cerr << "\n***************** " << bufferCount << " buffers ***************************\n";
 
@@ -576,7 +556,6 @@ int main(int argc, char **argv)
     {
         float* pts = ptSets[i];
         byte* prgb = prgbarrays != nullptr ? prgbarrays[i] : nullptr;
-        byte* pints = pintarrays != nullptr ? pintarrays[i] : nullptr;
 
         cerr << "******************* " << i << " buffer size = " << bufferSizes[i] << endl;
 
@@ -588,9 +567,6 @@ int main(int argc, char **argv)
                 cerr << int(*prgb++) << " ";
                 cerr << int(*prgb++) << " ";
                 cerr << int(*prgb++) << " ";
-            }
-            if (pints != nullptr) {
-                cerr << int(*pints++);
             }
             cerr << endl;
         }

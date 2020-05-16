@@ -1,3 +1,4 @@
+//#define ENABLE_ATTRIBUTES
 
 #include <pdal/PointView.hpp>
 #include <pdal/PointTable.hpp>
@@ -12,715 +13,903 @@
 
 #include <string>
 #include <vector>
+#include <unordered_set>
 #include <ppl.h>
 #include <exception>
+#include "PointCloudTools.h"
 
-using byte = unsigned char;
 using namespace concurrency;
 using namespace pdal;
 using namespace pdal::Dimension;
 
-struct Point3d
+struct Punkt3d
 {
-	double x, y, z;
+    double x, y, z;
 
-	Point3d()
-	{
-		x = y = z = 0.f;
-	}
-	Point3d(double _x, double _y, double _z)
-	{
-		x = _x;
-		y = _y;
-		z = _z;
-	}
+    Punkt3d()
+    {
+        x = y = z = 0.f;
+    }
+    Punkt3d(double _x, double _y, double _z)
+    {
+        x = _x;
+        y = _y;
+        z = _z;
+    }
 };
 
-enum BoxType
+enum BoxTyp
 {
-	Empty,
-	Normal,
-	Infinity
+    Empty,
+    Normal,
+    Infinity
 };
 
 struct Box3d
 {
-	Point3d min;
-	Point3d max;
-	bool mCalculated;
-	BoxType mType;
+    Punkt3d min;
+    Punkt3d max;
+    bool _berechnet;
+    BoxTyp _typ;
 
-	Box3d()
-	{
-		mCalculated = false;
-		mType = Empty;
-	}
-	Box3d(Point3d _min, Point3d _max)
-	{
-		AddPoint(_min);
-		AddPoint(_max);
-	}
-	void Box3d::AddBox(Box3d box)
-	{
-		if (IsEmpty())
-		{
-			min = box.min;
-			max = box.max;
-		}
-		else
-		{
-			min.x = min(box.min.x, min.x);
-			min.y = min(box.min.y, min.y);
-			min.z = min(box.min.z, min.z);
-			min.x = min(box.max.x, min.x);
-			min.y = min(box.max.y, min.y);
-			min.z = min(box.max.z, min.z);
-			max.x = max(box.min.x, max.x);
-			max.y = max(box.min.y, max.y);
-			max.z = max(box.min.z, max.z);
-			max.x = max(box.max.x, max.x);
-			max.y = max(box.max.y, max.y);
-			max.z = max(box.max.z, max.z);
-		}
-	}
-	void Box3d::AddPoint(Point3d pt)
-	{
-		AddPoint(pt.x, pt.y, pt.z);
-	}
-	void Box3d::AddPoint(double x, double y, double z)
-	{
-		mCalculated = true;
-		if (IsEmpty())
-		{
-			min.x = x;
-			min.y = y;
-			min.z = z;
-			max.x = x;
-			max.y = y;
-			max.z = z;
-		}
-		else
-		{
-			min.x = min(min.x, x);
-			min.y = min(min.y, y);
-			min.z = min(min.z, z);
-			max.x = max(max.x, x);
-			max.y = max(max.y, y);
-			max.z = max(max.z, z);
-		}
-		mType = Normal;
-	}
-	bool IsCalculated()
-	{
-		return mCalculated;
-	}
-	bool IsEmpty()
-	{
-		return mType == Empty;
-	}
-	bool IsInfinity()
-	{
-		return (mType == Infinity);
-	}
-	bool IsNormal()
-	{
-		return (mType == Normal);
-	}
-	double Width()
-	{
-		if (!IsEmpty() && !IsInfinity())
-		{
-			return (max.x - min.x);
-		}
-		return 0.0;
-	}
-	double Height()
-	{
-		if (!IsEmpty() && !IsInfinity())
-		{
-			return (max.y - min.y);
-		}
-		return 0.0;
-	}
-	double Thickness()
-	{
-		if (!IsEmpty() && !IsInfinity())
-		{
-			return (max.z - min.z);
-		}
-		return 0.0;
-	}
-	double Zmax()
-	{
-		return max.z;
-	}
-	double Zmin()
-	{
-		return min.z;
-	}
+    Box3d()
+    {
+        _berechnet = false;
+        _typ = Empty;
+    }
+    Box3d(Punkt3d min, Punkt3d max)
+    {
+        AddPoint(min);
+        AddPoint(max);
+    }
+    void Box3d::AddBox(Box3d box)
+    {
+        if (IsEmpty())
+        {
+            min = box.min;
+            max = box.max;
+        }
+        else
+        {
+            min.x = min(box.min.x, min.x);
+            min.y = min(box.min.y, min.y);
+            min.z = min(box.min.z, min.z);
+            min.x = min(box.max.x, min.x);
+            min.y = min(box.max.y, min.y);
+            min.z = min(box.max.z, min.z);
+            max.x = max(box.min.x, max.x);
+            max.y = max(box.min.y, max.y);
+            max.z = max(box.min.z, max.z);
+            max.x = max(box.max.x, max.x);
+            max.y = max(box.max.y, max.y);
+            max.z = max(box.max.z, max.z);
+        }
+    }
+    void Box3d::AddPoint(Punkt3d pt)
+    {
+        AddPoint(pt.x, pt.y, pt.z);
+    }
+    void Box3d::AddPoint(double x, double y, double z)
+    {
+        _berechnet = true;
+        if (IsEmpty())
+        {
+            min.x = x;
+            min.y = y;
+            min.z = z;
+            max.x = x;
+            max.y = y;
+            max.z = z;
+        }
+        else
+        {
+            min.x = min(min.x, x);
+            min.y = min(min.y, y);
+            min.z = min(min.z, z);
+            max.x = max(max.x, x);
+            max.y = max(max.y, y);
+            max.z = max(max.z, z);
+        }
+        _typ = Normal;
+    }
+    bool IsCalculated()
+    {
+        return _berechnet;
+    }
+    bool IsEmpty()
+    {
+        return _typ == Empty;
+    }
+    bool IsInfinity()
+    {
+        return (_typ == Infinity);
+    }
+    bool IsNormal()
+    {
+        return (_typ == Normal);
+    }
+    double Width()
+    {
+        if (!IsEmpty() && !IsInfinity())
+        {
+            return (max.x - min.x);
+        }
+        return 0.0;
+    }
+    double Height()
+    {
+        if (!IsEmpty() && !IsInfinity())
+        {
+            return (max.y - min.y);
+        }
+        return 0.0;
+    }
+    double Thickness()
+    {
+        if (!IsEmpty() && !IsInfinity())
+        {
+            return (max.z - min.z);
+        }
+        return 0.0;
+    }
+    double Zmax()
+    {
+        return max.z;
+    }
+    double Zmin()
+    {
+        return min.z;
+    }
+    void Clear()
+    {
+        min.x = 0;
+        min.y = 0;
+        min.z = 0;
+        max.x = 0;
+        max.y = 0;
+        max.z = 0;
+        _typ = Empty;
+        _berechnet = false;
+    }
 };
 
+static map< PointAttributes::PointAttribute, pdal::Dimension::Id> sAttributeToDimension = {
+    {PointAttributes::PointAttribute::Intensity, Id::Intensity},
+    {PointAttributes::PointAttribute::EdgeOfFlightLine, Id::EdgeOfFlightLine},
+    {PointAttributes::PointAttribute::Classification, Id::Classification },
+    {PointAttributes::PointAttribute::ScanAngleRank, Id::ScanAngleRank },
+    {PointAttributes::PointAttribute::Curvature, Id::Curvature },
+    {PointAttributes::PointAttribute::Density, Id::Density },
+    {PointAttributes::PointAttribute::GpsTime, Id::GpsTime },
+    {PointAttributes::PointAttribute::InternalTime, Id::InternalTime},
+    {PointAttributes::PointAttribute::OffsetTime, Id::OffsetTime},
+    {PointAttributes::PointAttribute::Infrared, Id::Infrared},
+    {PointAttributes::PointAttribute::StartPulse, Id::StartPulse},
+    {PointAttributes::PointAttribute::ReflectedPulse, Id::ReflectedPulse},
+    {PointAttributes::PointAttribute::HeightAboveGround, Id::HeightAboveGround},
+    {PointAttributes::PointAttribute::Pitch, Id::Pitch},
+    {PointAttributes::PointAttribute::Roll, Id::Roll},
+    {PointAttributes::PointAttribute::PulseWidth, Id::PulseWidth},
+    {PointAttributes::PointAttribute::Deviation, Id::Deviation},
+    {PointAttributes::PointAttribute::PassiveSignal, Id::PassiveSignal},
+    {PointAttributes::PointAttribute::BackgroundRadiation, Id::BackgroundRadiation},
+    {PointAttributes::PointAttribute::Azimuth, Id::Azimuth},
+    {PointAttributes::PointAttribute::WanderAngle, Id::WanderAngle},
+    {PointAttributes::PointAttribute::ScanDirectionFlag, Id::ScanDirectionFlag},
+    {PointAttributes::PointAttribute::PointId, Id::PointId},
+    {PointAttributes::PointAttribute::Mark, Id::Mark},
+    {PointAttributes::PointAttribute::Alpha, Id::Alpha},
+    {PointAttributes::PointAttribute::EchoRange, Id::EchoRange}
+};
+
+enum PointCloudError
+{
+    None = 0,
+    InvalidExtents = 1
+};
+inline PointCloudError operator|(PointCloudError a, PointCloudError b)
+{
+    return static_cast<PointCloudError>(static_cast<int>(a) | static_cast<int>(b));
+}
+inline PointCloudError operator&(PointCloudError a, PointCloudError b)
+{
+    return static_cast<PointCloudError>(static_cast<int>(a) & static_cast<int>(b));
+}
+inline PointCloudError operator~(PointCloudError a)
+{
+    return static_cast<PointCloudError>(~static_cast<int>(a));
+}
+
 static float** spPunkte;
-static Point3d spOffsetpunkt;
+static Punkt3d spOffsetpunkt;
 static Box3d spBegrenzungsbox;
-static byte** spRgb;
-static byte** spIntensitäten;
-static byte** spTime;
-static byte** spWave;
-static byte** spInfrared;
-static byte** spClassification;
 static int snPunktwolkengröße;
 static int snPufferanzahl;
-static int *snPuffergrößen;
-static bool sUseMinimumPointDistance;
-static bool sStoreCodesOnly;
-static bool sHasRGB, sHasIntensity, sHasClassification, sHasWave, sHasTime, sHasInfrared;
-static bool sUseRGB, sUseIntensity, sUseClassification, sUseWave, sUseTime, sUseInfrared;
+static PointAttributes::PointAttribute sAttributeVerfügbar;
+static byte** spRgb;
+static map<PointAttributes::PointAttribute, unsigned short**> spAttributesShort;
+static map<PointAttributes::PointAttribute, void**> sAttributeArrays;
+static bool sUseMinimumPointDistance, sComputeExtents;
 static float sMinimumPointDistance;
 static string* sFilenames;
 static int sFilecount;
-static const int snBufferGranularity = 8;
+static int snBufferGranularity = 8, sunPaletteSize = 65536;
+static map<PointAttributes::PointAttribute, double> sAttributeMin, sAttributeMax;
+static map<PointAttributes::PointAttribute, unsigned int*> sHistogramm;
+static const int MaxBufferGranularity = 8;
+static PointCloudError sError;
+static bool sFirstPoint = true;
+static double** spBufferBoxesActual;
 
-struct PointColor{
-	int r, g, b;
+struct PunktFarbe {
+    int r, g, b;
 
-	PointColor()
-	{
-	}
-	PointColor(int _r, int _g, int _b)
-	{
-		r = _r;
-		g = _g;
-		b = _b;
-	}
+    PunktFarbe()
+    {
+    }
+    PunktFarbe(int _r, int _g, int _b)
+    {
+        r = _r;
+        g = _g;
+        b = _b;
+    }
 };
 
-struct PointList {
-	float *pointList;
-	int *colorList;
-	int *intensityList;
-	int *classificationList;
-	int *gpsTimeList;
-	int *waveList;
-	int *infraredList;
-	int count, capacity;
+struct PunkteList {
+    float* punkteList;
+    map< PointAttributes::PointAttribute, void*>attributeList;
+    int count, capacity;
 
-	PointList(int n, bool rgb, bool intensity)
-	{
-		count = 0;
-		capacity = n;
-		pointList = new float[n * 3];
-		colorList = rgb ? new int[n * 3] : nullptr;
-		intensityList = intensity ? new int[n] : nullptr;
-	}
-	~PointList()
-	{
-		//delete pointList;
-		delete colorList;
-		delete intensityList;
-	}
+    PunkteList(int n, unordered_set<PointAttributes::PointAttribute> attributeSet)
+    {
+        count = 0;
+        capacity = n;
+        punkteList = new float[n * 3];
+
+        for (auto att : attributeSet) {
+            switch (att)
+            {
+            case PointAttributes::PointAttribute::RGB:
+                attributeList[att] = new unsigned short[n * 3];
+                break;
+            case PointAttributes::PointAttribute::Intensity:
+            case PointAttributes::PointAttribute::Classification:
+            case PointAttributes::PointAttribute::Infrared:
+                attributeList[att] = new unsigned short[n];
+                break;
+            case PointAttributes::PointAttribute::InternalTime:
+            case PointAttributes::PointAttribute::GpsTime:
+            case PointAttributes::PointAttribute::OffsetTime:
+                attributeList[att] = new double[n];
+                break;
+            default:
+                attributeList[att] = nullptr;
+                break;
+            }
+        }
+    }
+    ~PunkteList()
+    {
+    }
 };
+
 
 
 extern "C"
 {
-	_declspec(dllexport) int OpenLasFiles(char** filenames, int filecount)
-	{
-		try
-		{
-			sFilenames = new string[filecount];
-			sFilecount = filecount;
-			snPunktwolkengröße = 0;
-			sHasRGB = sHasIntensity = sHasClassification = sHasWave = sHasTime = sHasInfrared = true;
-			spBegrenzungsbox = Box3d();
+    _declspec(dllexport) bool HasAttribute(PointAttributes::PointAttribute attribute)
+    {
+        return (sAttributeVerfügbar & attribute) != 0;
+    }
 
-			for (int f = 0; f < filecount; ++f) {
-				sFilenames[f] = string(filenames[f]);
-				//pdal::Option las_opt("filename", string(filenames[f]));
-				//pdal::Options las_opts(las_opt);
-				pdal::Options las_opts;
-				las_opts.add("filename", string(filenames[f]));
-				//las_opts.add(las_opt);
-				LasReader sLasReader;
-				sLasReader.setOptions(las_opts);
-				PointTable sTable;
-				sLasReader.prepare(sTable);
-				snPunktwolkengröße += sLasReader.getNumPoints();
-				LasHeader sLasHeader = sLasReader.header();
-				sHasInfrared = sHasInfrared && sLasHeader.hasInfrared();
-				sHasRGB = sHasRGB && sLasHeader.hasColor();
-				sHasTime = sHasTime&& sLasHeader.hasTime();
-				sHasWave = sHasWave&&sLasHeader.hasWave();
-				spBegrenzungsbox.AddPoint(sLasHeader.minX(), sLasHeader.minY(), sLasHeader.minZ());
-				spBegrenzungsbox.AddPoint(sLasHeader.maxX(), sLasHeader.maxY(), sLasHeader.maxZ());
-			}
-			return snPunktwolkengröße;
-		}
-		catch (exception& e)
-		{
-			cerr << e.what() << endl;
-		}
-		return 0;
-	}
-	_declspec(dllexport) void CloseLasFiles()
-	{
-		delete[] snPuffergrößen;
-		for (int i = 0;i < snPufferanzahl;i++)
-		{
-			delete[] spPunkte[i];
-			if (spRgb != nullptr) delete[]spRgb[i];
-			if (spIntensitäten != nullptr) delete[]spIntensitäten[i];
-		}
-		delete[] spPunkte;
-		if (spRgb != nullptr) delete[]spRgb;
-		if (spIntensitäten != nullptr) delete[]spIntensitäten;
-	}
-	_declspec(dllexport) bool HasInfrared()
-	{
-		return sHasInfrared;
-	}
-	_declspec(dllexport) void UseInfrared(bool bUse)
-	{
-		sUseInfrared = bUse;
-	}
-	_declspec(dllexport) bool HasIntensity()
-	{
-		return sHasIntensity;
-	}
-	_declspec(dllexport) void UseIntensity(bool bUse)
-	{
-		sUseIntensity = bUse;
-	}
-	_declspec(dllexport) bool HasRGB()
-	{
-		return sHasRGB;
-	}
-	_declspec(dllexport) void UseRGB(bool bUse)
-	{
-		sUseRGB = bUse;
-	}
-	_declspec(dllexport) bool HasWave()
-	{
-		return sHasWave;
-	}
-	_declspec(dllexport) void UseWave(bool bUse)
-	{
-		sUseWave = bUse;
-	}
-	_declspec(dllexport) bool HasTime()
-	{
-		return sHasTime;
-	}
-	_declspec(dllexport) void UseTime(bool bUse)
-	{
-		sUseTime = bUse;
-	}
-	_declspec(dllexport) bool HasClassification()
-	{
-		return sHasClassification;
-	}
-	_declspec(dllexport) void UseClassification(bool bUse)
-	{
-		sUseClassification = bUse;
-	}
-	_declspec(dllexport) byte** GetPointRGBs()
-	{
-		return spRgb;
-	}
-	_declspec(dllexport) byte** GetPointIntensities()
-	{
-		return spIntensitäten;
-	}
-	_declspec(dllexport) int GetPointCloudSize()
-	{
-		return snPunktwolkengröße;
-	}
-	_declspec(dllexport) double* GetBoundingBox()
-	{
-		double *pBox = new double[6] {
-			spBegrenzungsbox.min.x,
-				spBegrenzungsbox.min.y,
-				spBegrenzungsbox.min.z,
-				spBegrenzungsbox.max.x,
-				spBegrenzungsbox.max.y,
-				spBegrenzungsbox.max.z
-		};
-		return pBox;
-	}
-	_declspec(dllexport) double* GetOffsetPoint()
-	{
-		double *pOP = new double[3] {
-			spOffsetpunkt.x,
-				spOffsetpunkt.x,
-				spOffsetpunkt.x
-		};
-		return pOP;
-	}
+    _declspec(dllexport) unsigned int GetAvailableAttributes()
+    {
+        return sAttributeVerfügbar;
+    }
 
-	// codiere die (x,y,z) Koordinaten (10 bits in jeder Dimension) in einen 32-bit Morton code
-	// siehe: https://devblogs.nvidia.com/thinking-parallel-part-iii-tree-construction-gpu/
+    _declspec(dllexport) int OpenLasFiles(char** filenames, int filecount)
+    {
+        try
+        {
+            sFilenames = new string[filecount];
+            sFilecount = filecount;
+            snPunktwolkengröße = 0;
+            sAttributeVerfügbar = PointAttributes::PointAttribute::All;
+            sError = None;
+            spBegrenzungsbox.Clear();
 
-	// magische Bitmasken
-	static unsigned int encodingMask[6] = { 0x000003ff, 0, 0x30000ff, 0x0300f00f, 0x30c30c3, 0x9249249 };
-	static unsigned int decodingMask[6] = { 0, 0x000003ff, 0x30000ff, 0x0300f00f, 0x30c30c3, 0x9249249 };
-	// teilen die bits des 10-bit Koordinatenwerts
-	static unsigned int interleaveBits(unsigned int coord)
-	{
-		unsigned int x = coord & encodingMask[0];
-		x = (x | x << 16) & encodingMask[2];
-		x = (x | x << 8) & encodingMask[3];
-		x = (x | x << 4) & encodingMask[4];
-		x = (x | x << 2) & encodingMask[5];
-		return x;
-	}
-	// kodiere x,y,z in 32-bit Morton code mit magischen Bits
-	static unsigned int MortonCode(unsigned int x, unsigned int y, unsigned int z)
-	{
-		return interleaveBits(x) | (interleaveBits(y) << 1) | (interleaveBits(z) << 2);
-	}
-	// erhalten interleavte Bits, d.h. jedes dritte Bit
-	static unsigned int getInterleavedBits(unsigned int mortonCode)
-	{
-		unsigned int x = mortonCode & decodingMask[5];
-		x = (x ^ (x >> 2)) & decodingMask[4];
-		x = (x ^ (x >> 4)) & decodingMask[3];
-		x = (x ^ (x >> 8)) & decodingMask[2];
-		x = (x ^ (x >> 16)) & decodingMask[1];
-		return x;
-	}
-	// teilen den 32-bit Morton code in einzelne 10-bit Koordinaten
-	static void MortonDecode(unsigned int mortonCode, unsigned int& x, unsigned int& y, unsigned int& z)
-	{
-		x = getInterleavedBits(mortonCode);
-		y = getInterleavedBits(mortonCode >> 1);
-		z = getInterleavedBits(mortonCode >> 2);
-	}
+            for (int f = 0; f < filecount; ++f) {
+                sFilenames[f] = string(filenames[f]);
+                pdal::Option las_opt("filename", string(filenames[f]));
+                pdal::Options las_opts;
+                las_opts.add(las_opt);
+                LasReader sLasReader;
+                sLasReader.setOptions(las_opts);
+                PointTable sTable;
+                sLasReader.prepare(sTable);
+                snPunktwolkengröße += sLasReader.getNumPoints();
+                LasHeader sLasHeader = sLasReader.header();
+                if (!sLasHeader.hasColor()) sAttributeVerfügbar = sAttributeVerfügbar & ~PointAttributes::PointAttribute::RGB;
+                if (!sLasHeader.hasInfrared())sAttributeVerfügbar = sAttributeVerfügbar & ~PointAttributes::PointAttribute::Infrared;
+                if (!sLasHeader.hasTime()) {
+                    sAttributeVerfügbar = sAttributeVerfügbar & ~PointAttributes::PointAttribute::GpsTime;
+                    sAttributeVerfügbar = sAttributeVerfügbar & ~PointAttributes::PointAttribute::InternalTime;
+                    sAttributeVerfügbar = sAttributeVerfügbar & ~PointAttributes::PointAttribute::OffsetTime;
+                }
+                spBegrenzungsbox.AddPoint(sLasHeader.minX(), sLasHeader.minY(), sLasHeader.minZ());
+                spBegrenzungsbox.AddPoint(sLasHeader.maxX(), sLasHeader.maxY(), sLasHeader.maxZ());
+            }
+            return snPunktwolkengröße;
+        }
+        catch (exception& e)
+        {
+            cerr << e.what() << endl;
+        }
+        return 0;
+    }
+    _declspec(dllexport) void CloseLasFiles()
+    {
+        for (int i = 0; i < snPufferanzahl; i++) {
+            delete[] spPunkte[i];
+        }
+        for (auto pair : spAttributesShort) {
+            for (int i = 0; i < snPufferanzahl; i++) {
+                delete[]pair.second[i];
+            }
+        }
+        if (spRgb != nullptr) {
+            for (int i = 0; i < snPufferanzahl; i++)
+            {
+                delete[]spRgb[i];
+            }
+        }
+    }
+    _declspec(dllexport) double GetMinAttribute(PointAttributes::PointAttribute attribute)
+    {
+        return sAttributeMin[attribute];
+    }
+    _declspec(dllexport) double GetMaxAttribute(PointAttributes::PointAttribute attribute)
+    {
+        return sAttributeMax[attribute];
+    }
+    _declspec(dllexport) unsigned int* GetHistogram(PointAttributes::PointAttribute attribute)
+    {
+        return sHistogramm.count(attribute) ? sHistogramm[attribute] : nullptr;
+    }
+    _declspec(dllexport) unsigned short** GetAttributeValues(PointAttributes::PointAttribute attribute)
+    {
+        if (HasAttribute(attribute)) {
+            return (unsigned short**)sAttributeArrays[attribute];
+        }
+        return nullptr;
+    }
+    _declspec(dllexport) byte** GetPointRGBs()
+    {
+        return (byte**)GetAttributeValues(PointAttributes::PointAttribute::RGB);
+    }
+    _declspec(dllexport) int GetPointCloudSize()
+    {
+        return snPunktwolkengröße;
+    }
+    _declspec(dllexport) double* GetBoundingBox()
+    {
+        double* pBox = new double[6]{
+            spBegrenzungsbox.min.x,
+                spBegrenzungsbox.min.y,
+                spBegrenzungsbox.min.z,
+                spBegrenzungsbox.max.x,
+                spBegrenzungsbox.max.y,
+                spBegrenzungsbox.max.z
+        };
+        return pBox;
+    }
+    _declspec(dllexport) double** GetBufferBoxesActual()
+    {
+        return spBufferBoxesActual;
+    }
+    _declspec(dllexport) double* GetOffsetPoint()
+    {
+        double* pOP = new double[3]{
+            spOffsetpunkt.x,
+            spOffsetpunkt.y,
+            spOffsetpunkt.z
+        };
+        return pOP;
+    }
+    _declspec(dllexport) unsigned long GetError()
+    {
+        return sError;
+    }
 
-	// kodiere x,y,z in 6-bit Morton code
-	static unsigned int MortonCode6(unsigned int x, unsigned int y, unsigned int z)
-	{
-		unsigned int code = 0;
-		code |= z & 0x1;
-		code |= (z << 2) & 0x8;
-		code |= (y << 1) & 0x2;
-		code |= (y << 3) & 0x10;
-		code |= (x << 2) & 0x4;
-		code |= (x << 4) & 0x20;
-		return code;
-	}
-	// kodiere x,y,z in 9-bit Morton code
-	inline static unsigned int MortonCode9(unsigned int x, unsigned int y, unsigned int z)
-	{
-		unsigned int code = 0;
-		code |= z & 0x1;
-		code |= (z << 2) & 0x8;
-		code |= (z << 4) & 0x40;
-		code |= (y << 1) & 0x2;
-		code |= (y << 3) & 0x10;
-		code |= (y << 5) & 0x80;
-		code |= (x << 2) & 0x4;
-		code |= (x << 4) & 0x20;
-		code |= (x << 6) & 0x100;
-		return code;
-	}
-	// kodiere x,y,z in 12-bit Morton code
-	static unsigned int MortonCode12(unsigned int x, unsigned int y, unsigned int z)
-	{
-		unsigned int code = 0;
-		code |= z & 0x1;
-		code |= (z << 2) & 0x8;
-		code |= (z << 4) & 0x40;
-		code |= (z << 6) & 0x200;
-		code |= (y << 1) & 0x2;
-		code |= (y << 3) & 0x10;
-		code |= (y << 5) & 0x80;
-		code |= (y << 7) & 0x400;
-		code |= (x << 2) & 0x4;
-		code |= (x << 4) & 0x20;
-		code |= (x << 6) & 0x100;
-		code |= (x << 8) & 0x800;
-		return code;
-	}
-	// kodiere x,y,z in 15-bit Morton code
-	static unsigned int MortonCode15(unsigned int x, unsigned int y, unsigned int z)
-	{
-		unsigned int code = 0;
-		code |= z & 0x1;
-		code |= (z << 2) & 0x8;
-		code |= (z << 4) & 0x40;
-		code |= (z << 6) & 0x200;
-		code |= (z << 8) & 0x1000;
-		code |= (y << 1) & 0x2;
-		code |= (y << 3) & 0x10;
-		code |= (y << 5) & 0x80;
-		code |= (y << 7) & 0x400;
-		code |= (y << 9) & 0x2000;
-		code |= (x << 2) & 0x4;
-		code |= (x << 4) & 0x20;
-		code |= (x << 6) & 0x100;
-		code |= (x << 8) & 0x800;
-		code |= (x << 10) & 0x4000;
-		return code;
-	}
+    // codiere die (x,y,z) Koordinaten (10 bits in jeder Dimension) in einen 32-bit Morton code
+    // siehe: https://devblogs.nvidia.com/thinking-parallel-part-iii-tree-construction-gpu/
 
-	class UserTable : public PointTable
-	{
-	private:
-		double m_x;
-		double m_y;
-		double m_z;
+    // magische Bitmasken
+    static unsigned int encodingMask[6] = { 0x000003ff, 0, 0x30000ff, 0x0300f00f, 0x30c30c3, 0x9249249 };
+    static unsigned int decodingMask[6] = { 0, 0x000003ff, 0x30000ff, 0x0300f00f, 0x30c30c3, 0x9249249 };
+    // teilen die bits des 10-bit Koordinatenwerts
+    static unsigned int interleaveBits(unsigned int coord)
+    {
+        unsigned int x = coord & encodingMask[0];
+        x = (x | x << 16) & encodingMask[2];
+        x = (x | x << 8) & encodingMask[3];
+        x = (x | x << 4) & encodingMask[4];
+        x = (x | x << 2) & encodingMask[5];
+        return x;
+    }
+    // kodiere x,y,z in 32-bit Morton code mit magischen Bits
+    static unsigned int MortonCode(unsigned int x, unsigned int y, unsigned int z)
+    {
+        return interleaveBits(x) | (interleaveBits(y) << 1) | (interleaveBits(z) << 2);
+    }
+    // erhalten interleavte Bits, d.h. jedes dritte Bit
+    static unsigned int getInterleavedBits(unsigned int mortonCode)
+    {
+        unsigned int x = mortonCode & decodingMask[5];
+        x = (x ^ (x >> 2)) & decodingMask[4];
+        x = (x ^ (x >> 4)) & decodingMask[3];
+        x = (x ^ (x >> 8)) & decodingMask[2];
+        x = (x ^ (x >> 16)) & decodingMask[1];
+        return x;
+    }
+    // teilen den 32-bit Morton code in einzelne 10-bit Koordinaten
+    static void MortonDecode(unsigned int mortonCode, unsigned int& x, unsigned int& y, unsigned int& z)
+    {
+        x = getInterleavedBits(mortonCode);
+        y = getInterleavedBits(mortonCode >> 1);
+        z = getInterleavedBits(mortonCode >> 2);
+    }
 
-	public:
-		PointId addPoint()
-		{
-			return 0;
-		}
-		char *getPoint(PointId idx)
-		{
-			return NULL;
-		}
-		void setField(const Dimension::Detail *d, PointId idx, const void *value)
-		{
-			if (d->id() == Dimension::Id::X)
-				m_x = *(const double *)value;
-			else if (d->id() == Dimension::Id::Y)
-				m_y = *(const double *)value;
-			else if (d->id() == Dimension::Id::Z)
-				m_z = *(const double *)value;
-		}
-		void getField(const Dimension::Detail *d, PointId idx, void *value)
-		{
-			if (d->id() == Dimension::Id::X)
-				*(double *)value = m_x;
-			else if (d->id() == Dimension::Id::Y)
-				*(double *)value = m_y;
-			else if (d->id() == Dimension::Id::Z)
-				*(double *)value = m_z;
-		}
-	};
+    // kodiere x,y,z in 6-bit Morton code
+    static unsigned int MortonCode6(unsigned int x, unsigned int y, unsigned int z)
+    {
+        unsigned int code = 0;
+        code |= z & 0x1;
+        code |= (z << 2) & 0x8;
+        code |= (y << 1) & 0x2;
+        code |= (y << 3) & 0x10;
+        code |= (x << 2) & 0x4;
+        code |= (x << 4) & 0x20;
+        return code;
+    }
+    // kodiere x,y,z in 9-bit Morton code
+    inline static unsigned int MortonCode9(unsigned int x, unsigned int y, unsigned int z)
+    {
+        unsigned int code = 0;
+        code |= z & 0x1;
+        code |= (z << 2) & 0x8;
+        code |= (z << 4) & 0x40;
+        code |= (y << 1) & 0x2;
+        code |= (y << 3) & 0x10;
+        code |= (y << 5) & 0x80;
+        code |= (x << 2) & 0x4;
+        code |= (x << 4) & 0x20;
+        code |= (x << 6) & 0x100;
+        return code;
+    }
+    // kodiere x,y,z in 12-bit Morton code
+    static unsigned int MortonCode12(unsigned int x, unsigned int y, unsigned int z)
+    {
+        unsigned int code = 0;
+        code |= z & 0x1;
+        code |= (z << 2) & 0x8;
+        code |= (z << 4) & 0x40;
+        code |= (z << 6) & 0x200;
+        code |= (y << 1) & 0x2;
+        code |= (y << 3) & 0x10;
+        code |= (y << 5) & 0x80;
+        code |= (y << 7) & 0x400;
+        code |= (x << 2) & 0x4;
+        code |= (x << 4) & 0x20;
+        code |= (x << 6) & 0x100;
+        code |= (x << 8) & 0x800;
+        return code;
+    }
+    // kodiere x,y,z in 15-bit Morton code
+    static unsigned int MortonCode15(unsigned int x, unsigned int y, unsigned int z)
+    {
+        unsigned int code = 0;
+        code |= z & 0x1;
+        code |= (z << 2) & 0x8;
+        code |= (z << 4) & 0x40;
+        code |= (z << 6) & 0x200;
+        code |= (z << 8) & 0x1000;
+        code |= (y << 1) & 0x2;
+        code |= (y << 3) & 0x10;
+        code |= (y << 5) & 0x80;
+        code |= (y << 7) & 0x400;
+        code |= (y << 9) & 0x2000;
+        code |= (x << 2) & 0x4;
+        code |= (x << 4) & 0x20;
+        code |= (x << 6) & 0x100;
+        code |= (x << 8) & 0x800;
+        code |= (x << 10) & 0x4000;
+        return code;
+    }
 
-	_declspec(dllexport) float** ReadPoints(int *pufferanzahl, int **puffergrößen, unsigned int **pufferCodes, bool useMinimumPointDistance = false, bool storeCodesOnly = false, float minDist = 0.f)
-	{
-		//sUseTime = true;
-		try
-		{
-			sUseMinimumPointDistance = useMinimumPointDistance;
-			sStoreCodesOnly = storeCodesOnly;
-			sMinimumPointDistance = minDist;
+    class UserTable : public PointTable
+    {
+    private:
+        double m_x;
+        double m_y;
+        double m_z;
 
-			float punktwolkeUmfang = max(max(spBegrenzungsbox.Width(), spBegrenzungsbox.Height()), spBegrenzungsbox.Thickness());
-			const float skalierungsFaktor = float(snBufferGranularity) / punktwolkeUmfang;
-			int rgbMax = 0, intensityMax = 0, gpsTimeMin = INT32_MAX, gpsTimeMax = 0, classificationMax = 0;
+    public:
+        PointId addPoint()
+        {
+            return 0;
+        }
+        char* getPoint(PointId idx)
+        {
+            return NULL;
+        }
+        void setField(const Dimension::Detail* d, PointId idx, const void* value)
+        {
+            if (d->id() == Dimension::Id::X)
+                m_x = *(const double*)value;
+            else if (d->id() == Dimension::Id::Y)
+                m_y = *(const double*)value;
+            else if (d->id() == Dimension::Id::Z)
+                m_z = *(const double*)value;
+        }
+        void getField(const Dimension::Detail* d, PointId idx, void* value)
+        {
+            if (d->id() == Dimension::Id::X)
+                *(double*)value = m_x;
+            else if (d->id() == Dimension::Id::Y)
+                *(double*)value = m_y;
+            else if (d->id() == Dimension::Id::Z)
+                *(double*)value = m_z;
+        }
+    };
 
-			spPunkte = nullptr;
-			spRgb = nullptr;
-			spIntensitäten = nullptr;
-			int **pnIntensitäten = nullptr, **pnRGBs = nullptr, *pnIntMax = nullptr, *pnRgbMax = nullptr;
-			map<unsigned int, PointList*> pPointLists;
-			int bufferLimit = 10000000;
-			int initialAlloc = 1000000;
+    _declspec(dllexport) float** ReadPoints(int* pufferanzahl, int** puffergrößen, unsigned int** pufferCodes, PointAttributes::PointAttribute selectedAttributes, float minDist)
+    {
+        try
+        {
+            snBufferGranularity = MaxBufferGranularity;
+            sUseMinimumPointDistance = minDist > 0;
+            sMinimumPointDistance = minDist;
+            sComputeExtents = false;
+            float pointCloudExtent = max(max(spBegrenzungsbox.Width(), spBegrenzungsbox.Height()), spBegrenzungsbox.Thickness());
+            Box3d computedExtents;
+            if (pointCloudExtent <= 0) {
+                sComputeExtents = true;
+                sUseMinimumPointDistance = false;
+                snBufferGranularity = 1;
+                sError = sError | InvalidExtents;
+            }
+            const float scaleFactor = pointCloudExtent > 0 ? float(snBufferGranularity) / pointCloudExtent : 1;
+            const float tenBitRange = 1024;
+            const float minimumPointDistance = pointCloudExtent > sMinimumPointDistance * tenBitRange ? tenBitRange / pointCloudExtent : 1 / sMinimumPointDistance;
+            spPunkte = nullptr;
+            spRgb = nullptr;
+            sFirstPoint = true;
+            map<unsigned int, PunkteList*> pPunkteListen;
+            int initialAlloc = 1 << 20;
+            int bufferLimit = initialAlloc << 3;
+            int codeRemap[MaxBufferGranularity * MaxBufferGranularity * MaxBufferGranularity];
+            for (int c = 0; c < snBufferGranularity * snBufferGranularity * snBufferGranularity; ++c) {
+                codeRemap[c] = -1;
+            }
+            unordered_set<unsigned int> codeSet;
+            map<unsigned int, Box3d> bufferBoxesActual;
 
-			int codeRemap[snBufferGranularity*snBufferGranularity*snBufferGranularity];
-			for (int c = 0; c < snBufferGranularity*snBufferGranularity*snBufferGranularity; ++c) {
-				codeRemap[c] = -1;
-			}
+            unordered_set<PointAttributes::PointAttribute> selectedAttributesSet;
+            for (int i = 0; i < PointAttributes::MAX_ATTRIBUTES; ++i) {
+                PointAttributes::PointAttribute attr = (PointAttributes::PointAttribute)(1 << i);
+                if ((selectedAttributes & attr) != 0) {
+                    selectedAttributesSet.insert(attr);
+                    sAttributeMin[attr] = DBL_MAX;
+                    sAttributeMax[attr] = 0;
+                }
+            }
 
-			auto cb = [&](PointRef& point) {
+            auto pointCallback = [&](PointRef& point) {
 
-				double x = point.getFieldAs<double>(Id::X) - spOffsetpunkt.x;// -fileOffset.x;
-				double y = point.getFieldAs<double>(Id::Y) - spOffsetpunkt.y;// -fileOffset.y;
-				double z = point.getFieldAs<double>(Id::Z) - spOffsetpunkt.z;// -fileOffset.z;
+                double x = point.getFieldAs<double>(Id::X);
+                double y = point.getFieldAs<double>(Id::Y);
+                double z = point.getFieldAs<double>(Id::Z);
+                if (sFirstPoint) {
+                    spOffsetpunkt = Punkt3d(x, y, z);
+                    sFirstPoint = false;
+                }
+                if (sComputeExtents) {
+                    computedExtents.AddPoint(x, y, z);
+                }
 
-				unsigned int ux = (unsigned int)((x - spBegrenzungsbox.min.x) * skalierungsFaktor);
-				unsigned int uy = (unsigned int)((y - spBegrenzungsbox.min.y) * skalierungsFaktor);
-				unsigned int uz = (unsigned int)((z - spBegrenzungsbox.min.z) * skalierungsFaktor);
-				ux = min(ux, snBufferGranularity - 1);
-				uy = min(uy, snBufferGranularity - 1);
-				uz = min(uz, snBufferGranularity - 1);
-				unsigned int mcode = MortonCode9(ux, uy, uz);
-				PointList *pointList;
+                if (sUseMinimumPointDistance) {
+                    unsigned int uxx = (unsigned int)((x - spBegrenzungsbox.min.x) * minimumPointDistance);
+                    unsigned int uyy = (unsigned int)((y - spBegrenzungsbox.min.y) * minimumPointDistance);
+                    unsigned int uzz = (unsigned int)((z - spBegrenzungsbox.min.z) * minimumPointDistance);
+                    const int granularity = 1024;
+                    uxx = min(uxx, granularity - 1);
+                    uyy = min(uyy, granularity - 1);
+                    uzz = min(uzz, granularity - 1);
+                    auto insertResult = codeSet.insert(MortonCode(uxx, uyy, uzz));
+                    if (!insertResult.second) {
+                        return true;
+                    }
+                }
 
-				if (codeRemap[mcode] < 0) {
-					codeRemap[mcode] = mcode;
-					pointList = pPointLists[mcode] = new PointList(initialAlloc, sHasRGB, sHasIntensity);
-				}
-				else {
-					unsigned int mappedCode = codeRemap[mcode];
-					pointList = pPointLists[mappedCode];
-					int capacity = pointList->capacity;
-					if (pointList->count == capacity) {
-						mappedCode += 0x1 << 16;
-						codeRemap[mcode] = mappedCode;
-						pointList = pPointLists[mappedCode] = new PointList(min(capacity * 2, bufferLimit), sHasRGB, sHasIntensity);
-					}
-					//mcode = mappedCode;
-				}
+                unsigned int ux = (unsigned int)((x - spBegrenzungsbox.min.x) * scaleFactor);
+                unsigned int uy = (unsigned int)((y - spBegrenzungsbox.min.y) * scaleFactor);
+                unsigned int uz = (unsigned int)((z - spBegrenzungsbox.min.z) * scaleFactor);
+                unsigned int uCellLimit = (unsigned int)(snBufferGranularity - 1);
+                ux = min(ux, uCellLimit);
+                uy = min(uy, uCellLimit);
+                uz = min(uz, uCellLimit);
+                unsigned int mcode = MortonCode9(ux, uy, uz);
+                PunkteList* punkteList;
+                Box3d* currentBox;
 
-				int index = pointList->count;
-				int tripleIndex = 3 * index;
-				pointList->pointList[tripleIndex] = x;
-				pointList->pointList[tripleIndex + 1] = y;
-				pointList->pointList[tripleIndex + 2] = z;
+                if (codeRemap[mcode] < 0) {
+                    codeRemap[mcode] = mcode;
+                    punkteList = pPunkteListen[mcode] = new PunkteList(initialAlloc, selectedAttributesSet);
+                    bufferBoxesActual[mcode] = Box3d();
+                    currentBox = &bufferBoxesActual[mcode];
+                }
+                else {
+                    unsigned int mappedCode = codeRemap[mcode];
+                    punkteList = pPunkteListen[mappedCode];
+                    int capacity = punkteList->capacity;
+                    if (punkteList->count == capacity) {
+                        mappedCode += 0x1 << 16;
+                        codeRemap[mcode] = mappedCode;
+                        punkteList = pPunkteListen[mappedCode] = new PunkteList(min(capacity * 2, bufferLimit), selectedAttributesSet);
+                        bufferBoxesActual[mappedCode] = Box3d();
+                    }
+                    currentBox = &bufferBoxesActual[mappedCode];
+                }
 
-				if (sHasIntensity && sUseIntensity) {
-					int intensity = point.getFieldAs<int>(Id::Intensity);
-					intensityMax = max(intensityMax, intensity);
-					pointList->intensityList[index] = intensity;
-				}
-				if (sHasRGB && sUseRGB) {
-					int red = point.getFieldAs<int>(Id::Red);
-					int green = point.getFieldAs<int>(Id::Green);
-					int blue = point.getFieldAs<int>(Id::Blue);
-					rgbMax = max(rgbMax, max(red, max(green, blue)));
-					pointList->colorList[tripleIndex] = red;
-					pointList->colorList[tripleIndex + 1] = green;
-					pointList->colorList[tripleIndex + 2] = blue;
-				}
-				//if (sHasClassification && sUseClassification) {
-				//	int classification = point.getFieldAs<int>(Id::Classification);
-				//	classificationMax = std::max(classificationMax, classification);
-				//	pointList->classificationList[index] = classification;
-				//}
-				//if (sHasTime && sUseTime) {
-				//	int gpsTime = point.getFieldAs<int>(Id::GpsTime);
-				//	gpsTimeMax = std::max(gpsTimeMax, gpsTime);
-				//	gpsTimeMin = std::min(gpsTimeMin, gpsTime);
-				//	pointList->gpsTimeList[index] = gpsTime;
-				//}
-				++(pointList->count);
+                x -= spOffsetpunkt.x;
+                y -= spOffsetpunkt.y;
+                z -= spOffsetpunkt.z;
 
-				return true;
-			};
+                currentBox->AddPoint(x, y, z);
 
-			for (int f = 0; f < sFilecount; ++f) {
+                double attributeVal;
+                int index = punkteList->count;
+                int tripleIndex = 3 * index;
+                punkteList->punkteList[tripleIndex] = x;
+                punkteList->punkteList[tripleIndex + 1] = y;
+                punkteList->punkteList[tripleIndex + 2] = z;
 
-				pdal::Option las_opt("filename", sFilenames[f]);
-				pdal::Options las_opts;
-				las_opts.add(las_opt);
-				LasReader sLasReader;
-				sLasReader.setOptions(las_opts);
+                for (auto att : selectedAttributesSet) {
+                    bool ignore = false;
+                    switch (att)
+                    {
+                    case PointAttributes::PointAttribute::RGB:
+                    {
+                        unsigned short red = point.getFieldAs<unsigned short>(Id::Red);
+                        unsigned short green = point.getFieldAs<unsigned short>(Id::Green);
+                        unsigned short blue = point.getFieldAs<unsigned short>(Id::Blue);
+                        attributeVal = max(red, max(green, blue));
+                        unsigned short* ptr = (unsigned short*)punkteList->attributeList[att];
+                        ptr[tripleIndex] = red;
+                        ptr[tripleIndex + 1] = green;
+                        ptr[tripleIndex + 2] = blue;
+                    }
+                    break;
+#ifdef ENABLE_ATTRIBUTES
+                    case PointAttributes::PointAttribute::Classification:
+                    {
+                        byte byteVal = point.getFieldAs<byte>(Id::Classification);
+                        unsigned short* shortPtr = (unsigned short*)punkteList->attributeList[att];
+                        shortPtr[index] = byteVal;
+                        attributeVal = byteVal;
+                    }
+                    break;
+                    case PointAttributes::PointAttribute::Intensity:
+                    case PointAttributes::PointAttribute::Infrared:
+                    {
+                        unsigned short shortVal = point.getFieldAs<unsigned short>(sAttributeToDimension[att]);
+                        unsigned short* shortPtr = (unsigned short*)punkteList->attributeList[att];
+                        shortPtr[index] = shortVal;
+                        attributeVal = shortVal;
+                    }
+                    break;
+                    case PointAttributes::PointAttribute::InternalTime:
+                    case PointAttributes::PointAttribute::GpsTime:
+                    case PointAttributes::PointAttribute::OffsetTime:
+                    {
+                        double doubleVal = point.getFieldAs<double>(sAttributeToDimension[att]);
+                        double* doublePtr = (double*)punkteList->attributeList[att];
+                        doublePtr[index] = doubleVal;
+                        attributeVal = doubleVal;
+                    }
+                    break;
+#endif
+                    default:
+                        ignore = true;
+                        break;
+                    }
 
-				FixedPointTable t(1000);
-				StreamCallbackFilter scf;
-				scf.setCallback(cb);
-				scf.setInput(sLasReader);
-				scf.prepare(t);
-				scf.execute(t);
+                    if (!ignore) {
+                        sAttributeMin[att] = min(sAttributeMin[att], attributeVal);
+                        sAttributeMax[att] = max(sAttributeMax[att], attributeVal);
+                    }
+                }
 
-				LasHeader sLasHeader = sLasReader.header();
+                ++(punkteList->count);
 
-				Point3d fileOffset(sLasHeader.offsetX(), sLasHeader.offsetY(), sLasHeader.offsetZ());
+                return true;
+            };
 
-				if (f == 0) {
-					//spOffsetpunkt.x = sPointView->getFieldAs<double>(Id::X, 0);
-					//spOffsetpunkt.y = sPointView->getFieldAs<double>(Id::Y, 0);
-					//spOffsetpunkt.z = sPointView->getFieldAs<double>(Id::Z, 0);
-					//spOffsetpunkt = spBegrenzungsbox.min;
-				}
-			}
+            for (int f = 0; f < sFilecount; ++f) {
 
-			map<unsigned int, int> cellCounts;
-			for (auto const& element : pPointLists) {
-				if ((element.second)->count > snPunktwolkengröße / 10000) {
-					cellCounts[element.first] = (element.second)->count;
-				}
-			}
+                pdal::Option las_opt("filename", sFilenames[f]);
+                pdal::Options las_opts;
+                las_opts.add(las_opt);
+                LasReader sLasReader;
+                sLasReader.setOptions(las_opts);
 
-			sHasIntensity = sHasIntensity && intensityMax > 0;
-			sHasRGB = sHasRGB && rgbMax > 0;
-			sHasClassification = sHasClassification && classificationMax > 0;
-			sHasTime = sHasTime && (gpsTimeMax - gpsTimeMin > 0);
+                FixedPointTable t(1000);
+                StreamCallbackFilter scf;
+                scf.setCallback(pointCallback);
+                scf.setInput(sLasReader);
+                scf.prepare(t);
+                scf.execute(t);
 
-			*pufferanzahl = snPufferanzahl = cellCounts.size();
-			*puffergrößen = new int[snPufferanzahl];
-			*pufferCodes = new unsigned int[snPufferanzahl];
-			spPunkte = new float*[snPufferanzahl];
-			if (sHasIntensity && sUseIntensity) {
-				spIntensitäten = new byte*[snPufferanzahl];
-			}
-			if (sHasRGB && sUseRGB) {
-				spRgb = new byte*[snPufferanzahl];
-			}
-			if (sHasClassification && sUseClassification) {
-				spClassification = new byte*[snPufferanzahl];
-			}
-			if (sHasTime && sUseTime) {
-				spTime = new byte*[snPufferanzahl];
-			}
-			if (sHasInfrared && sUseInfrared) {
-				spInfrared = new byte*[snPufferanzahl];
-			}
-			if (sHasWave && sUseWave) {
-				spWave = new byte*[snPufferanzahl];
-			}
+                LasHeader sLasHeader = sLasReader.header();
 
-			int puffer = 0;
+                Punkt3d fileOffset(sLasHeader.offsetX(), sLasHeader.offsetY(), sLasHeader.offsetZ());
+                if (sComputeExtents) {
+                    spBegrenzungsbox = computedExtents;
+                }
+            }
 
-			for (auto const& element : cellCounts) {
-				unsigned int baseCode = element.first & 0xffff;
-				(*pufferCodes)[puffer] = baseCode;
-				int ptCount = element.second;
-				(*puffergrößen)[puffer] = ptCount;
-				spPunkte[puffer] = pPointLists[element.first]->pointList;
-				byte *intensitätenPtr = nullptr;
-				if (sHasIntensity) {
-					intensitätenPtr = spIntensitäten[puffer] = new byte[element.second];
-				}
-				byte *rgbPtr = nullptr;
-				if (sHasRGB) {
-					rgbPtr = spRgb[puffer] = new byte[element.second * 3];
-				}
-				byte *gpsTimePtr = nullptr;
-				if (sHasTime) {
-					gpsTimePtr = spTime[puffer] = new byte[element.second];
-				}
-				byte *classificationPtr = nullptr;
-				if (sHasClassification) {
-					classificationPtr = spClassification[puffer] = new byte[element.second];
-				}
+            map<unsigned int, int> cellCounts;
+            for (auto const& element : pPunkteListen) {
+                if ((element.second)->count > snPunktwolkengröße / 10'000) {
+                    cellCounts[element.first] = (element.second)->count;
+                }
+            }
 
-				if (pPointLists.count(element.first)) {
+            *pufferanzahl = snPufferanzahl = cellCounts.size();
+            *puffergrößen = new int[snPufferanzahl];
+            *pufferCodes = new unsigned int[snPufferanzahl];
+            spPunkte = new float* [snPufferanzahl];
+            spBufferBoxesActual = new double* [snPufferanzahl];
 
-					if (sHasIntensity) {
-						int *intensityList = pPointLists[element.first]->intensityList;
-						for (int p = 0; p < ptCount; ++p) {
-							*intensitätenPtr++ = byte(255.0 * intensityList[p] / float(intensityMax));
-						}
-					}
-					if (sHasRGB) {
-						int *clrList = pPointLists[element.first]->colorList;
-						for (int p = 0; p < ptCount; ++p) {
-							*rgbPtr++ = byte(255.0 * clrList[p * 3] / float(rgbMax));
-							*rgbPtr++ = byte(255.0 * clrList[p * 3 + 1] / float(rgbMax));
-							*rgbPtr++ = byte(255.0 * clrList[p * 3 + 2] / float(rgbMax));
-						}
-					}
-					if (sHasTime) {
-						int *gpsTimeList = pPointLists[element.first]->gpsTimeList;
-						float range = gpsTimeMax - gpsTimeMin;
-						for (int p = 0; p < ptCount; ++p) {
-							*gpsTimePtr++ = byte(255.0 * (gpsTimeList[p] - gpsTimeMin) / range);
-						}
-					}
-					if (sHasClassification) {
-						int *classificationList = pPointLists[element.first]->classificationList;
-						for (int p = 0; p < ptCount; ++p) {
-							*classificationPtr++ = classificationList[p];
-						}
-					}
-				}
+            sAttributeVerfügbar = selectedAttributes;
+            unordered_set< PointAttributes::PointAttribute> availableAttributeSet;
 
-				++puffer;
-			}
+            for (auto att : selectedAttributesSet) {
+                if (sAttributeMax[att] <= sAttributeMin[att]) {
+                    sAttributeVerfügbar = sAttributeVerfügbar & ~att;
+                    continue;
+                }
+                availableAttributeSet.insert(att);
+                switch (att)
+                {
+                case PointAttributes::PointAttribute::RGB:
+                    spRgb = new byte * [snPufferanzahl];
+                    sAttributeArrays[PointAttributes::PointAttribute::RGB] = (void**)spRgb;
+                    sAttributeVerfügbar = sAttributeVerfügbar | PointAttributes::PointAttribute::Red;
+                    sAttributeVerfügbar = sAttributeVerfügbar | PointAttributes::PointAttribute::Green;
+                    sAttributeVerfügbar = sAttributeVerfügbar | PointAttributes::PointAttribute::Blue;
+                    sHistogramm[PointAttributes::PointAttribute::Red] = new unsigned int[sunPaletteSize];
+                    memset(sHistogramm[PointAttributes::PointAttribute::Red], 0, sunPaletteSize * sizeof(unsigned int));
+                    sHistogramm[PointAttributes::PointAttribute::Green] = new unsigned int[sunPaletteSize];
+                    memset(sHistogramm[PointAttributes::PointAttribute::Green], 0, sunPaletteSize * sizeof(unsigned int));
+                    sHistogramm[PointAttributes::PointAttribute::Blue] = new unsigned int[sunPaletteSize];
+                    memset(sHistogramm[PointAttributes::PointAttribute::Blue], 0, sunPaletteSize * sizeof(unsigned int));
+                    break;
+#ifdef ENABLE_ATTRIBUTES
+                case PointAttributes::PointAttribute::Intensity:
+                case PointAttributes::PointAttribute::Classification:
+                case PointAttributes::PointAttribute::Infrared:
+                case PointAttributes::PointAttribute::InternalTime:
+                case PointAttributes::PointAttribute::GpsTime:
+                case PointAttributes::PointAttribute::OffsetTime:
+                    spAttributesShort[att] = new unsigned short* [snPufferanzahl];
+                    sAttributeArrays[att] = (void**)spAttributesShort[att];
+                    sHistogramm[att] = new unsigned int[sunPaletteSize];
+                    memset(sHistogramm[att], 0, sunPaletteSize * sizeof(unsigned int));
+                    break;
+#endif
+                default:
+                    break;
+                }
+            }
 
-			pPointLists.clear();
+            int puffer = 0;
 
-			return spPunkte;
-		}
-		catch (...)
-		{
-		}
-		return nullptr;
-	}
+            for (auto const& element : cellCounts) {
+                unsigned int baseCode = element.first & 0xffff;
+                (*pufferCodes)[puffer] = baseCode;
+                int ptCount = element.second;
+                (*puffergrößen)[puffer] = ptCount;
+                spPunkte[puffer] = pPunkteListen[element.first]->punkteList;
+                Box3d pufferBoxActual = bufferBoxesActual[element.first];
+                spBufferBoxesActual[puffer] = new double[6]{
+                    pufferBoxActual.min.x,pufferBoxActual.min.y,pufferBoxActual.min.z,
+                    pufferBoxActual.Width(), pufferBoxActual.Height(), pufferBoxActual.Thickness() };
+                unsigned short* attributePtr = nullptr;
+                byte* rgbPtr = nullptr;
+
+                for (auto att : availableAttributeSet) {
+                    switch (att)
+                    {
+                    case PointAttributes::PointAttribute::RGB:
+                        rgbPtr = spRgb[puffer] = new byte[element.second * 3];
+                        break;
+#ifdef ENABLE_ATTRIBUTES
+                    case PointAttributes::PointAttribute::Classification:
+                    case PointAttributes::PointAttribute::GpsTime:
+                    case PointAttributes::PointAttribute::Infrared:
+                    case PointAttributes::PointAttribute::Intensity:
+                    case PointAttributes::PointAttribute::InternalTime:
+                    case PointAttributes::PointAttribute::OffsetTime:
+                        attributePtr = spAttributesShort[att][puffer] = new unsigned short[element.second];
+                        break;
+#endif
+                    default:
+                        break;
+                    }
+
+                    if (pPunkteListen.count(element.first)) {
+                        switch (att)
+                        {
+                        case PointAttributes::PointAttribute::RGB:
+                        {
+                            unsigned short* clrList = (unsigned short*)pPunkteListen[element.first]->attributeList[att];
+                            for (int p = 0; p < ptCount; ++p) {
+                                unsigned short redVal = clrList[p * 3];
+                                byte redValByte = byte(redVal / 256.0);
+                                ++sHistogramm[PointAttributes::PointAttribute::Red][redVal];
+                                *rgbPtr++ = redValByte;
+                                unsigned short grnVal = clrList[p * 3 + 1];
+                                byte grnValByte = byte(grnVal / 256.0);
+                                ++sHistogramm[PointAttributes::PointAttribute::Green][grnVal];
+                                *rgbPtr++ = grnValByte;
+                                unsigned short bluVal = clrList[p * 3 + 2];
+                                byte bluValByte = byte(bluVal / 256.0);
+                                ++sHistogramm[PointAttributes::PointAttribute::Blue][bluVal];
+                                *rgbPtr++ = bluValByte;
+                            }
+                        }
+                        break;
+#ifdef ENABLE_ATTRIBUTES
+                        case PointAttributes::PointAttribute::Intensity:
+                        case PointAttributes::PointAttribute::Classification:
+                        case PointAttributes::PointAttribute::Infrared:
+                        {
+                            unsigned short* attributeList = (unsigned short*)pPunkteListen[element.first]->attributeList[att];
+                            for (int p = 0; p < ptCount; ++p) {
+                                *attributePtr = attributeList[p] - sAttributeMin[att];
+                                ++sHistogramm[att][*attributePtr++];
+                            }
+                        }
+                        break;
+                        case PointAttributes::PointAttribute::InternalTime:
+                        case PointAttributes::PointAttribute::GpsTime:
+                        case PointAttributes::PointAttribute::OffsetTime:
+                        {
+                            double* attributeList = (double*)pPunkteListen[element.first]->attributeList[att];
+                            for (int p = 0; p < ptCount; ++p) {
+                                *attributePtr = unsigned short(UINT16_MAX * ((attributeList[p] - sAttributeMin[att]) / (sAttributeMax[att] - sAttributeMin[att])));
+                                ++sHistogramm[att][*attributePtr++];
+                            }
+                        }
+                        break;
+#endif
+                        default:
+                            break;
+                        }
+                    }
+                }
+                ++puffer;
+            }
+
+            pPunkteListen.clear();
+
+            return spPunkte;
+        }
+        catch (...)
+        {
+        }
+        return nullptr;
+    }
 }
-
