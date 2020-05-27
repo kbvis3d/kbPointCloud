@@ -22,157 +22,6 @@ using namespace concurrency;
 using namespace pdal;
 using namespace pdal::Dimension;
 
-struct Punkt3d
-{
-    double x, y, z;
-
-    Punkt3d()
-    {
-        x = y = z = 0.f;
-    }
-    Punkt3d(double _x, double _y, double _z)
-    {
-        x = _x;
-        y = _y;
-        z = _z;
-    }
-};
-
-enum BoxTyp
-{
-    Empty,
-    Normal,
-    Infinity
-};
-
-struct Box3d
-{
-    Punkt3d min;
-    Punkt3d max;
-    bool _berechnet;
-    BoxTyp _typ;
-
-    Box3d()
-    {
-        _berechnet = false;
-        _typ = Empty;
-    }
-    Box3d(Punkt3d min, Punkt3d max)
-    {
-        AddPoint(min);
-        AddPoint(max);
-    }
-    void Box3d::AddBox(Box3d box)
-    {
-        if (IsEmpty())
-        {
-            min = box.min;
-            max = box.max;
-        }
-        else
-        {
-            min.x = min(box.min.x, min.x);
-            min.y = min(box.min.y, min.y);
-            min.z = min(box.min.z, min.z);
-            min.x = min(box.max.x, min.x);
-            min.y = min(box.max.y, min.y);
-            min.z = min(box.max.z, min.z);
-            max.x = max(box.min.x, max.x);
-            max.y = max(box.min.y, max.y);
-            max.z = max(box.min.z, max.z);
-            max.x = max(box.max.x, max.x);
-            max.y = max(box.max.y, max.y);
-            max.z = max(box.max.z, max.z);
-        }
-    }
-    void Box3d::AddPoint(Punkt3d pt)
-    {
-        AddPoint(pt.x, pt.y, pt.z);
-    }
-    void Box3d::AddPoint(double x, double y, double z)
-    {
-        _berechnet = true;
-        if (IsEmpty())
-        {
-            min.x = x;
-            min.y = y;
-            min.z = z;
-            max.x = x;
-            max.y = y;
-            max.z = z;
-        }
-        else
-        {
-            min.x = min(min.x, x);
-            min.y = min(min.y, y);
-            min.z = min(min.z, z);
-            max.x = max(max.x, x);
-            max.y = max(max.y, y);
-            max.z = max(max.z, z);
-        }
-        _typ = Normal;
-    }
-    bool IsCalculated()
-    {
-        return _berechnet;
-    }
-    bool IsEmpty()
-    {
-        return _typ == Empty;
-    }
-    bool IsInfinity()
-    {
-        return (_typ == Infinity);
-    }
-    bool IsNormal()
-    {
-        return (_typ == Normal);
-    }
-    double Width()
-    {
-        if (!IsEmpty() && !IsInfinity())
-        {
-            return (max.x - min.x);
-        }
-        return 0.0;
-    }
-    double Height()
-    {
-        if (!IsEmpty() && !IsInfinity())
-        {
-            return (max.y - min.y);
-        }
-        return 0.0;
-    }
-    double Thickness()
-    {
-        if (!IsEmpty() && !IsInfinity())
-        {
-            return (max.z - min.z);
-        }
-        return 0.0;
-    }
-    double Zmax()
-    {
-        return max.z;
-    }
-    double Zmin()
-    {
-        return min.z;
-    }
-    void Clear()
-    {
-        min.x = 0;
-        min.y = 0;
-        min.z = 0;
-        max.x = 0;
-        max.y = 0;
-        max.z = 0;
-        _typ = Empty;
-        _berechnet = false;
-    }
-};
-
 static map< PointAttributes::PointAttribute, pdal::Dimension::Id> sAttributeToDimension = {
     {PointAttributes::PointAttribute::Intensity, Id::Intensity},
     {PointAttributes::PointAttribute::EdgeOfFlightLine, Id::EdgeOfFlightLine},
@@ -221,8 +70,8 @@ inline PointCloudError operator~(PointCloudError a)
 }
 
 static float** spPunkte;
-static Punkt3d spOffsetpunkt;
-static Box3d spBegrenzungsbox;
+static Kbvis::Punkt3d spOffsetpunkt;
+static Kbvis::Box3d spBegrenzungsbox;
 static int snPunktwolkengröße;
 static int snPufferanzahl;
 static PointAttributes::PointAttribute sAttributeVerfügbar;
@@ -394,14 +243,18 @@ extern "C"
     _declspec(dllexport) double* GetBoundingBox()
     {
         double* pBox = new double[6]{
-            spBegrenzungsbox.min.x,
-                spBegrenzungsbox.min.y,
-                spBegrenzungsbox.min.z,
-                spBegrenzungsbox.max.x,
-                spBegrenzungsbox.max.y,
-                spBegrenzungsbox.max.z
+            spBegrenzungsbox._min.x,
+                spBegrenzungsbox._min.y,
+                spBegrenzungsbox._min.z,
+                spBegrenzungsbox._max.x,
+                spBegrenzungsbox._max.y,
+                spBegrenzungsbox._max.z
         };
         return pBox;
+    }
+    _declspec(dllexport) Kbvis::Box3d* GetBoundingBox3d()
+    {
+        return &spBegrenzungsbox;
     }
     _declspec(dllexport) double** GetBufferBoxesActual()
     {
@@ -572,7 +425,7 @@ extern "C"
             sMinimumPointDistance = minDist;
             sComputeExtents = false;
             float pointCloudExtent = max(max(spBegrenzungsbox.Width(), spBegrenzungsbox.Height()), spBegrenzungsbox.Thickness());
-            Box3d computedExtents;
+            Kbvis::Box3d computedExtents;
             if (pointCloudExtent <= 0) {
                 sComputeExtents = true;
                 sUseMinimumPointDistance = false;
@@ -593,7 +446,7 @@ extern "C"
                 codeRemap[c] = -1;
             }
             unordered_set<unsigned int> codeSet;
-            map<unsigned int, Box3d> bufferBoxesActual;
+            map<unsigned int, Kbvis::Box3d> bufferBoxesActual;
 
             unordered_set<PointAttributes::PointAttribute> selectedAttributesSet;
             for (int i = 0; i < PointAttributes::MAX_ATTRIBUTES; ++i) {
@@ -611,7 +464,7 @@ extern "C"
                 double y = point.getFieldAs<double>(Id::Y);
                 double z = point.getFieldAs<double>(Id::Z);
                 if (sFirstPoint) {
-                    spOffsetpunkt = Punkt3d(x, y, z);
+                    spOffsetpunkt = Kbvis::Punkt3d(x, y, z);
                     sFirstPoint = false;
                 }
                 if (sComputeExtents) {
@@ -619,9 +472,9 @@ extern "C"
                 }
 
                 if (sUseMinimumPointDistance) {
-                    unsigned int uxx = (unsigned int)((x - spBegrenzungsbox.min.x) * minimumPointDistance);
-                    unsigned int uyy = (unsigned int)((y - spBegrenzungsbox.min.y) * minimumPointDistance);
-                    unsigned int uzz = (unsigned int)((z - spBegrenzungsbox.min.z) * minimumPointDistance);
+                    unsigned int uxx = (unsigned int)((x - spBegrenzungsbox._min.x) * minimumPointDistance);
+                    unsigned int uyy = (unsigned int)((y - spBegrenzungsbox._min.y) * minimumPointDistance);
+                    unsigned int uzz = (unsigned int)((z - spBegrenzungsbox._min.z) * minimumPointDistance);
                     const int granularity = 1024;
                     uxx = min(uxx, granularity - 1);
                     uyy = min(uyy, granularity - 1);
@@ -632,21 +485,21 @@ extern "C"
                     }
                 }
 
-                unsigned int ux = (unsigned int)((x - spBegrenzungsbox.min.x) * scaleFactor);
-                unsigned int uy = (unsigned int)((y - spBegrenzungsbox.min.y) * scaleFactor);
-                unsigned int uz = (unsigned int)((z - spBegrenzungsbox.min.z) * scaleFactor);
+                unsigned int ux = (unsigned int)((x - spBegrenzungsbox._min.x) * scaleFactor);
+                unsigned int uy = (unsigned int)((y - spBegrenzungsbox._min.y) * scaleFactor);
+                unsigned int uz = (unsigned int)((z - spBegrenzungsbox._min.z) * scaleFactor);
                 unsigned int uCellLimit = (unsigned int)(snBufferGranularity - 1);
                 ux = min(ux, uCellLimit);
                 uy = min(uy, uCellLimit);
                 uz = min(uz, uCellLimit);
                 unsigned int mcode = MortonCode9(ux, uy, uz);
                 PunkteList* punkteList;
-                Box3d* currentBox;
+                Kbvis::Box3d* currentBox;
 
                 if (codeRemap[mcode] < 0) {
                     codeRemap[mcode] = mcode;
                     punkteList = pPunkteListen[mcode] = new PunkteList(initialAlloc, selectedAttributesSet);
-                    bufferBoxesActual[mcode] = Box3d();
+                    bufferBoxesActual[mcode] = Kbvis::Box3d();
                     currentBox = &bufferBoxesActual[mcode];
                 }
                 else {
@@ -657,7 +510,7 @@ extern "C"
                         mappedCode += 0x1 << 16;
                         codeRemap[mcode] = mappedCode;
                         punkteList = pPunkteListen[mappedCode] = new PunkteList(min(capacity * 2, bufferLimit), selectedAttributesSet);
-                        bufferBoxesActual[mappedCode] = Box3d();
+                        bufferBoxesActual[mappedCode] = Kbvis::Box3d();
                     }
                     currentBox = &bufferBoxesActual[mappedCode];
                 }
@@ -753,7 +606,7 @@ extern "C"
 
                 LasHeader sLasHeader = sLasReader.header();
 
-                Punkt3d fileOffset(sLasHeader.offsetX(), sLasHeader.offsetY(), sLasHeader.offsetZ());
+                Kbvis::Punkt3d fileOffset(sLasHeader.offsetX(), sLasHeader.offsetY(), sLasHeader.offsetZ());
                 if (sComputeExtents) {
                     spBegrenzungsbox = computedExtents;
                 }
@@ -822,9 +675,9 @@ extern "C"
                 int ptCount = element.second;
                 (*puffergrößen)[puffer] = ptCount;
                 spPunkte[puffer] = pPunkteListen[element.first]->punkteList;
-                Box3d pufferBoxActual = bufferBoxesActual[element.first];
+                Kbvis::Box3d pufferBoxActual = bufferBoxesActual[element.first];
                 spBufferBoxesActual[puffer] = new double[6]{
-                    pufferBoxActual.min.x,pufferBoxActual.min.y,pufferBoxActual.min.z,
+                    pufferBoxActual._min.x,pufferBoxActual._min.y,pufferBoxActual._min.z,
                     pufferBoxActual.Width(), pufferBoxActual.Height(), pufferBoxActual.Thickness() };
                 unsigned short* attributePtr = nullptr;
                 byte* rgbPtr = nullptr;
