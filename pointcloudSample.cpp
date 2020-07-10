@@ -53,7 +53,7 @@ void renderPointCloud();
 
 const char *sSDKsample = "kbPunktWolke";
 
-uint width = 512, height = 512;
+uint width = 800, height = 800;
 dim3 blockSize(16, 16);
 dim3 gridSize;
 
@@ -85,7 +85,7 @@ void computeFPS()
     if (fpsCount == fpsLimit){
         char fps[256];
         float ifps = 1.f / (sdkGetAverageTimerValue(&timer) / 1000.f);
-        sprintf(fps, "Point Cloud Render: %3.1f fps", ifps);
+        sprintf(fps, "kbPunktWolke: %3.1f fps", ifps);
 
         glutSetWindowTitle(fps);
         fpsCount = 0;
@@ -307,9 +307,9 @@ GLuint pointCloudShader = 0;
 
 void loadLasFile()
 {
-    pointCount = OpenLasFiles(new char* [1]{ "test.las" }, 1);
-    //pointCount = OpenLasFiles(new char* [1]{ "flower.las" }, 1);
-    //pointCount = OpenLasFiles(new char*[1]{ "statue.las" }, 1);
+    //pointCount = OpenLasFiles(new char*[1]{ "test.las" }, 1);
+    //pointCount = OpenLasFiles(new char*[1]{ "flower.las" }, 1);
+    pointCount = OpenLasFiles(new char*[1]{ "statue.las" }, 1);
     //pointCount = OpenLasFiles(new char*[1]{ "towerComplete.las" }, 1);
 
     pointPositions = ReadPoints(&bufferCount, &bufferSizes, &bufferCodes, PointAttributes::PointAttribute::RGB, 0);
@@ -356,7 +356,7 @@ float m_FilterGridSize;
 int cellResolutionX;
 int cellResolutionY;
 int cellResolutionZ;
-int histogramPrecision = 128;
+int histogramPrecision = 256;
 int kernelMaxK;
 int kernelK = 20;
 float stddevMult = 0.f;
@@ -429,40 +429,46 @@ void RunKmeansKernel(long int maxBufferSize)
     glDisable(GL_DEPTH_TEST);
     glUniform3f(locBoundingBoxMin, float(pBox3d->_min.x - pOffsetpunkt[0]), float(pBox3d->_min.y - pOffsetpunkt[1]), float(pBox3d->_min.z - pOffsetpunkt[2]));
     glUniform3f(locBoundingBoxSize, float(pBox3d->Width()), float(pBox3d->Height()), float(pBox3d->Thickness()));
-    m_FilterGridSize = pow(0.5f * pBox3d->Width() * pBox3d->Height() * pBox3d->Thickness() * kernelK / float(pointCount), 1.0 / 3.0);
+    m_FilterGridSize = pow(0.1f * pBox3d->Width() * pBox3d->Height() * pBox3d->Thickness() * kernelK / float(pointCount), 1.0 / 3.0);
     cellResolutionX = int(ceil(pBox3d->Width() / m_FilterGridSize));
     cellResolutionY = int(ceil(pBox3d->Height() / m_FilterGridSize));
     cellResolutionZ = int(ceil(pBox3d->Thickness() / m_FilterGridSize));
     glUniform3i(locFilterResolution, cellResolutionX, cellResolutionY, cellResolutionZ);
     glUniform3f(locFilterTolerance, kernelK, stddevMult, sqrt(2.f * m_FilterGridSize * m_FilterGridSize));
     kernelMaxK = min(64, int(maxBufferSize / (cellResolutionX * cellResolutionY * cellResolutionZ)));
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, knnBuffer);
-    if (knnBufferSize < bufferSizesMax * histogramPrecision) {
-        knnBufferSize = bufferSizesMax * histogramPrecision;
-        glBufferData(GL_SHADER_STORAGE_BUFFER, knnBufferSize * sizeof(unsigned int), 0, GL_DYNAMIC_COPY);
-    }
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, cellBuffer);
-    if (cellBufferSize < cellResolutionX * cellResolutionY * cellResolutionZ * kernelMaxK) {
-        cellBufferSize = cellResolutionX * cellResolutionY * cellResolutionZ * kernelMaxK;
+    long cellBufferAlloc = cellResolutionX * cellResolutionY * cellResolutionZ * kernelMaxK;
+    if (cellBufferSize < cellBufferAlloc) {
+        cellBufferSize = cellBufferAlloc;
         glBufferData(GL_SHADER_STORAGE_BUFFER, cellBufferSize * sizeof(unsigned int), 0, GL_DYNAMIC_COPY);
     }
     glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED, GL_UNSIGNED_INT, 0);
     glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 1, cellBuffer, 0, cellBufferSize * sizeof(unsigned int));
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, kernelVerticesBuffer);
-    if (kernelVerticesBufferSize < pointCount * 3) {
-        kernelVerticesBufferSize = pointCount * 3;
+    long kernelVerticesBufferAlloc = pointCount * 3;
+    if (kernelVerticesBufferSize < kernelVerticesBufferAlloc) {
+        kernelVerticesBufferSize = kernelVerticesBufferAlloc;
         glBufferData(GL_SHADER_STORAGE_BUFFER, kernelVerticesBufferSize * sizeof(float), 0, GL_DYNAMIC_COPY);
     }
     glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 3, kernelVerticesBuffer, 0, kernelVerticesBufferSize * sizeof(float));
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, knnBuffer);
+    long knnBufferAlloc = pointCount * histogramPrecision;
+    if (knnBufferSize < knnBufferAlloc) {
+        knnBufferSize = knnBufferAlloc;
+        glBufferData(GL_SHADER_STORAGE_BUFFER, knnBufferSize * sizeof(unsigned int), 0, GL_DYNAMIC_COPY);
+    }
+    glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED, GL_UNSIGNED_INT, 0);
+    glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 4, knnBuffer, 0, knnBufferSize * sizeof(unsigned int));
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, kMeansBuffer);
-    if (kMeansBufferSize < pointCount + 4) {
-        kMeansBufferSize = pointCount + 4;
+    long kMeansBufferAlloc = pointCount + 4;
+    if (kMeansBufferSize < kMeansBufferAlloc) {
+        kMeansBufferSize = kMeansBufferAlloc;
         glBufferData(GL_SHADER_STORAGE_BUFFER, kMeansBufferSize * sizeof(unsigned int), 0, GL_DYNAMIC_COPY);
     }
     glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED, GL_UNSIGNED_INT, 0);
     glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 5, kMeansBuffer, 0, kMeansBufferSize * sizeof(unsigned int));
     glEnableVertexAttribArray(locPointCenter);
-    int pointsDrawn = 0, pointPositionOffset = 0;
+    long pointsDrawn = 0;
     for (int bufferIndex = 0; bufferIndex < bufferCount; bufferIndex++) {
         int pointDrawCount = bufferSizes[bufferIndex];
         if (pointDrawCount == 0) continue;
@@ -473,27 +479,22 @@ void RunKmeansKernel(long int maxBufferSize)
         glDrawArrays(GL_POINTS, 0, pointDrawCount);
         glMemoryBarrier(0x00002000);
         pointsDrawn += pointDrawCount;
-        pointPositionOffset += bufferSizes[bufferIndex];
     }
-    pointsDrawn = 0;
-    pointPositionOffset = 0;
-    for (int bufferIndex = 0; bufferIndex < bufferCount; bufferIndex++) {
-        int pointDrawCount = bufferSizes[bufferIndex];
-        if (pointDrawCount == 0) continue;
-        glBindBuffer(GL_ARRAY_BUFFER, pointBuffers[bufferIndex]);
-        glVertexAttribPointer(locPointCenter, 3, GL_FLOAT, false, 3 * sizeof(float), 0);
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, knnBuffer);
-        glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI, GL_RED, GL_UNSIGNED_INT, 0);
-        glBindBufferRange(GL_SHADER_STORAGE_BUFFER, 4, knnBuffer, 0, knnBufferSize * sizeof(unsigned int));
-        glUniform3i(locFilterMaxKN, kernelMaxK, pointCount, pointsDrawn);
-        for (int pass = KERNEL_PASS_KMEANS_OUTLIER_KNN; pass <= KERNEL_PASS_KMEANS_OUTLIER_MEAN; ++pass) {
-            glUniform2i(locFilterPass, pass, histogramPrecision);
-            glDrawArrays(GL_POINTS, 0, pointDrawCount);
-            glMemoryBarrier(0x00002000);
-        }
-        pointsDrawn += pointDrawCount;
-        pointPositionOffset += bufferSizes[bufferIndex];
+
+    glMemoryBarrier(0x00002000);
+
+    assert(GL_NO_ERROR == glGetError());
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glDisableVertexAttribArray(locPointCenter);
+    glUniform3i(locFilterMaxKN, kernelMaxK, pointCount, 0);
+
+    for (int pass = KERNEL_PASS_KMEANS_OUTLIER_KNN; pass <= KERNEL_PASS_KMEANS_OUTLIER_MEAN; ++pass) {
+        glUniform2i(locFilterPass, pass, histogramPrecision);
+        glDrawArrays(GL_POINTS, 0, pointCount);
+        glMemoryBarrier(0x00002000);
     }
+
     assert(GL_NO_ERROR == glGetError());
 }
 
@@ -621,10 +622,10 @@ void keyboard(unsigned char key, int x, int y)
     case '\'':
         break;
     case '.':
-        kernelK += 1;
+        kernelK = min(kernelK + 10, 100);
         break;
     case ',':
-        kernelK -= 1;
+        kernelK = max(kernelK - 10, 1);
         break;
     case 'r':
         scale = 1;

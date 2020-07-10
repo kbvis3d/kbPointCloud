@@ -119,6 +119,16 @@
       <Project>{c3e25632-4ba8-44d7-aab8-efb53858ae3c}</Project>
     </ProjectReference>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="pointCloudShader.frag">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="pointCloudShader.vsh">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </FxCompile>
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="$(CUDAPropsPath)\CUDA 10.2.targets" />

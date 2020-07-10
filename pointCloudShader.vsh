@@ -192,9 +192,13 @@ void main()
 	else if (FilterPass.x == KERNEL_PASS_KMEANS_OUTLIER_KNN)
 	{
 		int vertexId = gl_VertexID + FilterMaxKN.z;
-		uint distancesIndex = gl_VertexID * FilterPass.y;
-		int[] cellIndices = getCellIndices8(pointCenterIn);
-		for (int c = 0; c < 8; ++c)
+		uint distancesIndex = vertexId * FilterPass.y;
+		uint currentVertexIndex = vertexId * 3;
+		vec3 pointCenter = vec3(vertices[currentVertexIndex], vertices[currentVertexIndex + 1], vertices[currentVertexIndex + 2]);
+		//int[] cellIndices = getCellIndices8(pointCenter);
+		//for (int c = 0; c < 8; ++c)
+		int[] cellIndices = getCellIndices27(pointCenter);
+		for (int c = 0; c < 27; ++c)
 		{
 			int cellIndex = cellIndices[c];
 			if (cellIndex >= 0)
@@ -210,7 +214,7 @@ void main()
 						{
 							uint vertexIndex = neighborId * 3;
 							vec3 neighborPos = vec3(vertices[vertexIndex], vertices[vertexIndex + 1], vertices[vertexIndex + 2]);
-							uint d = int(round(DISTANCE_SCALE * clamp(distance(pointCenterIn, neighborPos) / FilterTolerance.z, 0.0, 1.0)));
+							uint d = int(round(DISTANCE_SCALE * clamp(distance(pointCenter, neighborPos) / FilterTolerance.z, 0.0, 1.0)));
 							atomicAdd(distances[distancesIndex + d], 1);
 						}
 					}
@@ -222,7 +226,7 @@ void main()
 	else if (FilterPass.x == KERNEL_PASS_KMEANS_OUTLIER_MEAN)
 	{
 		int vertexId = gl_VertexID + FilterMaxKN.z;
-		int distancesIndex = gl_VertexID * FilterPass.y;
+		int distancesIndex = vertexId * FilterPass.y;
 		uint K = uint(FilterTolerance.x);
 		float sum = 0.0;
 		uint samples = 0;
